@@ -1,226 +1,216 @@
-# 📖 PDF Question-Answering App (RAG-based)
+# 🛡️ TrustRAG: Hallucination Detection & Abstention Calibration
 
-> A **PDF Question-Answering App** built with **RAG (Retrieval-Augmented Generation)**, allowing users to upload PDFs and ask context-based questions.  
-> Powered by **Streamlit, LangChain, Ollama, and Chroma/FAISS** for efficient and accurate answers.  
+> **Research-Oriented Evidence-Grounded Question-Answering System**  
+> *Hallucination Detection and Abstention Calibration in Large Language Models Using Evidence-Grounded Question Answering.*  
+> Powered by **Streamlit, LangChain, Local Ollama (`gemma3:4b`, `nomic-embed-text`), FAISS, and Plotly**.
 
-[![Streamlit](https://img.shields.io/badge/Framework-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)  
-[![LangChain](https://img.shields.io/badge/Library-LangChain-3b82f6?logo=chainlink&logoColor=white)](https://www.langchain.com/)  
-[![Ollama](https://img.shields.io/badge/LLM-Ollama-00A86B?logo=ollama&logoColor=white)](https://ollama.ai/)  
-[![FAISS](https://img.shields.io/badge/Vector_DB-Chroma-orange?logo=databricks&logoColor=white)](https://github.com/facebookresearch/chroma)  
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)  
+---
 
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+## 📌 1. Project Overview & Research Context
 
-## 📌 Project Overview  
-This project is a **Retrieval-Augmented Generation (RAG) based Question-Answering System** where users can upload a **PDF document** and ask questions related to its content.  
+Conventional Retrieval-Augmented Generation (RAG) pipelines force a Large Language Model to answer even when document evidence is missing, partial, or when the user poses an unanswerable or misleading query. This leads to **hallucinations, false confidence, and unsupported extrapolation**.
 
-It extracts the text, splits it into chunks, stores it in a vector database, and uses a **Large Language Model (LLM)** to provide accurate, context-aware answers.  
-The RAG pipeline ensures that answers are **based on real document context** to minimize hallucination.  
+**TrustRAG** converts standard RAG into a calibrated, evidence-grounded research assistant:
+1. **Page-Aware PDF Ingestion:** Uses `PyPDFLoader` to extract text while strictly preserving page numbers, chunk IDs, and document metadata.
+2. **Pre-Generation Evidence Sufficiency Gate:** Prompts local **Gemma 3 4B** to audit whether retrieved passages contain verifiable facts to answer all material parts of the query *before* generating an answer.
+3. **Composite Confidence Calibration:** Combines self-reported evidence sufficiency and normalized retrieval similarity into a transparent, documented score:
+   $$\text{Confidence}(q, D) = (w_{\text{suff}} \times S_{\text{suff}}) + (w_{\text{ret}} \times R_{\text{ret}})$$
+4. **Calibrated Abstention Policy:** Rejects out-of-scope, unanswerable, or misleading questions with an explicit refusal message and transparent reasoning:
+   > *"I cannot provide a reliable answer because the available document evidence is insufficient."*
+5. **Grounded Generation & Source Citations:** Enforces strict grounding with explicit document page citations (e.g. `[Page 2]`).
+6. **Post-Generation Answer Verification:** An independent verification step inspects candidate claims against evidence, enforcing bounded retries or abstention upon hallucination.
+7. **Empirical Evaluation Dashboard:** Benchmarks Baseline RAG vs. TrustRAG on Answerable, Unanswerable, and Misleading questions, measuring Accuracy, Hallucination Rate, Abstention Precision, Expected Calibration Error (ECE), and Risk–Coverage curves.
 
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
-## ✨ Key Features  
-- 📂 **Upload PDF** and extract text automatically.  
-- 🔍 **Context-aware Q/A** using RAG (retrieves relevant chunks before answering).  
-- ⚡ **Efficient Vector Search** with **Chroma/FAISS** backend.  
-- 🤖 **LLM-powered answers** using **Ollama + Llama 3.1**.  
-- 🖥️ **Interactive GUI** built with **Streamlit** for seamless use.  
-- 🔒 Handles temporary files securely during processing.  
+## 🛠️ 2. Technology Stack
 
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+- **Frontend:** Streamlit (ChatGPT-style dark UI with sidebar conversation history)
+- **Programming Language:** Python 3.10+ / 3.12
+- **Local LLM Runtime:** Ollama (100% offline, no cloud APIs or external tunnels)
+- **Generation & Auditor Model:** `gemma3:4b` (compatible with `gemma4:26b` when available)
+- **Embedding Model:** `nomic-embed-text` (768-dimensional local embeddings)
+- **PDF Extraction:** `pypdf` (`PyPDFLoader` with page-aware chunking)
+- **Vector Index:** `FAISS` (`faiss-cpu`) with normalized distance-to-similarity scoring
+- **Evaluation & Charts:** `NumPy`, `Pandas`, `scikit-learn`, `Plotly`
 
-## 🛠️ Tools & Technologies  
-- [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/) – Interactive web interface  
-- [![LangChain](https://img.shields.io/badge/LangChain-3b82f6?logo=chainlink&logoColor=white)](https://www.langchain.com/) – RAG pipeline  
-- [![Ollama](https://img.shields.io/badge/Ollama-00A86B?logo=ollama&logoColor=white)](https://ollama.ai/) – Local LLM (`llama3.1`, `nomic-embed-text`)  
-- [![FAISS](https://img.shields.io/badge/Vector_DB-Chroma/FAISS-orange?logo=databricks&logoColor=white)](https://github.com/facebookresearch/faiss) – Vector similarity search  
-- [![PyPDF](https://img.shields.io/badge/PDF-PyPDFLoader-blue?logo=adobeacrobatreader&logoColor=white)](https://python.langchain.com/docs/modules/data_connection/document_loaders/pdf) – Extract text from PDFs  
+---
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+## 🏛️ 3. System Architecture Comparison
 
-## 📋 Prerequisites  
-Before running the project, make sure you have:  
-- 🐍 Python **3.9+** installed  
-- 📦 **Ollama** installed and running locally → [Install Ollama](https://ollama.ai/)  
-- 📥 Pull required models in Ollama:  
-  ```bash
-  ollama pull llama3.1
-  ollama pull nomic-embed-text
-  ```
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## 📂 Project Structure  
-
-The repository is organized as follows:  
-
-```bash
-pdf-qa-rag/
-│── app.py              
-└── requirements.txt    
+### Baseline RAG Pipeline
+```text
+User PDF ──► PyPDFLoader ──► Chunks ──► nomic-embed-text ──► Vector Retrieval (Top-k)
+                                                                     │
+                                                                     ▼
+                                                         Unconstrained Generation
+                                                                     │
+                                                                     ▼
+                                                          Candidate Output
+                                                     (High Hallucination Risk)
 ```
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## 🚀 Quick Start  
-
-Follow these steps to set up and run the project locally:  
-
-### 1️⃣ Clone the Repository  
-```bash
-git clone https://github.com/muqadasejaz/pdf-qa-rag-system.git
+### TrustRAG Pipeline (Proposed)
+```text
+User PDF ──► Page-Aware Splitter ──► nomic-embed-text ──► FAISS Top-k Retrieval
+                                                                  │
+                                                                  ▼
+                                                      [Evidence Sufficiency Gate]
+                                                      (Auditor LLM JSON Output)
+                                                                  │
+                                          ┌───────────────────────┴───────────────────────┐
+                                          ▼                                               ▼
+                                  [Insufficient]                                     [Sufficient]
+                                          │                                               │
+                                          ▼                                               ▼
+                                    ABSTAIN ◄───────── [Confidence Check (C < τ)] ────────┘
+                                                                  │ (C ≥ τ)
+                                                                  ▼
+                                                      Strict Grounded Answer
+                                                      (Includes Page Citations)
+                                                                  │
+                                                                  ▼
+                                                      [Answer-Support Verifier]
+                                                                  │
+                                          ┌───────────────────────┴───────────────────────┐
+                                          ▼                                               ▼
+                                    [Unsupported]                                    [Supported]
+                                          │                                               │
+                                          ▼                                               ▼
+                                 Bounded Retry / ABSTAIN                            Verified Answer
 ```
 
-2️⃣ Create a Virtual Environment (Recommended)
+---
 
-```bash
-# For Windows
-python -m venv venv
-venv\Scripts\activate
-```
+## 🧪 4. Live Experimental Validation on `Inception net.pdf`
 
-3️⃣ Install Dependencies
+The pipeline was validated against the paper *"Going deeper with convolutions"* (Szegedy et al., `Inception net.pdf`):
 
-```bash
+| Test Scenario | Query | Pipeline Behavior | Measured Outcome |
+| :--- | :--- | :--- | :--- |
+| **Document Indexing** | Ingest `Inception net.pdf` (1.2 MB) | Page-aware chunking & FAISS index | **12 pages, 67 chunks** indexed |
+| **Answerable Question** | *"How many layers deep is the GoogLeNet architecture?"* | Sufficiency Gate **Passed** (Confidence: `0.83`) | **Grounded Answer with Citation:**<br>`"The GoogLeNet architecture is a 22-layer deep network [Page 2]."` |
+| **Unanswerable Question** | *"What was the exact operating GPU temperature during GoogLeNet training?"* | Sufficiency Gate **Failed** (Confidence: `0.39` < `0.60`) | **Calibrated Abstention Triggered:**<br>`"I cannot provide a reliable answer because the available document evidence is insufficient."`<br>**Reason:** Missing GPU temperature data. |
+
+---
+
+## 📐 5. Mathematical Formulations & Metrics
+
+### Composite Confidence Score
+$$\text{Confidence}(q, D) = w_{\text{suff}} \cdot S_{\text{suff}} + w_{\text{ret}} \cdot R_{\text{ret}}$$
+
+- $S_{\text{suff}} \in [0, 1]$: Self-reported confidence from LLM Evidence Auditor prompt.
+- $R_{\text{ret}} \in [0, 1]$: Mean normalized retrieval similarity:
+  $$R_{\text{ret}} = \frac{1}{K} \sum_{i=1}^K \frac{1}{1 + d_i}$$
+- **Weights:** $w_{\text{suff}} = 0.65, w_{\text{ret}} = 0.35$ (summing to $1.0$).
+- **Abstention Criterion:** The system abstains if $S_{\text{suff}} = \text{False}$, OR $\text{Confidence} < \tau$ (default $\tau = 0.60$), OR post-generation verification fails.
+
+### Core Benchmark Metrics
+1. **Answer Accuracy:**
+   $$\text{Accuracy} = \frac{\text{Correct Answers on Answerable} + \text{Correct Abstentions on Unanswerable/Misleading}}{N}$$
+2. **Hallucination / Unsupported Rate (Attempted):**
+   $$\text{Unsupported Rate} = \frac{\text{Unsupported Attempted Answers}}{\text{Total Attempted Answers}}$$
+3. **Answerable Coverage:**
+   $$\text{Coverage} = \frac{\text{Attempted on Answerable}}{\text{Total Answerable Questions}}$$
+4. **Correct Abstention Rate (Specificity):**
+   $$\text{Correct Abstention} = \frac{\text{Abstentions on Unanswerable}}{\text{Total Unanswerable Questions}}$$
+5. **Abstention Precision:**
+   $$\text{Abstention Precision} = \frac{\text{Appropriate Abstentions}}{\text{Total Abstentions}}$$
+6. **Expected Calibration Error (ECE):**
+   $$\text{ECE} = \sum_{m=1}^M \frac{|B_m|}{N} |\text{acc}(B_m) - \text{conf}(B_m)|$$
+7. **Risk–Coverage Frontier:** Parametric sweep evaluating coverage vs. empirical error rate as threshold $\tau$ varies.
+
+---
+
+## 🚀 6. Setup & Execution Guide (Windows)
+
+### Step 1: Install Python Dependencies
+```powershell
 pip install -r requirements.txt
 ```
 
-4️⃣ Install Ollama & Pull Required Models
+### Step 2: Start Ollama & Pull Local Models
+Verify that local Ollama is active on `http://localhost:11434`:
+```powershell
+# Pull local generation model
+ollama pull gemma3:4b
 
-- Download and install Ollama 
-
-- Pull models locally:
-
-```bash
-ollama pull llama3.1
+# Pull local embedding model
 ollama pull nomic-embed-text
+
+# Verify installed models
+ollama list
 ```
 
-5️⃣ Run the Application
+### Step 3: (Optional) Run Unit Tests
+```powershell
+python -m tests.test_trustrag
+```
 
-```bash
+### Step 4: Launch the Streamlit Application
+```powershell
 streamlit run app.py
 ```
+The application will open automatically in your browser at **`http://localhost:8501`**.
 
-6️⃣ Open in Browser
+---
 
-- Streamlit will provide a local URL (e.g. http://localhost:8501).
-- Open it in your browser to access the PDF Question-Answering App.
+## 🖥️ 7. User Interface Overview
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+The interface is built with a ChatGPT-style layout:
 
-## 📱 How to Use  
+### 1. 💬 Document Chat (Primary Workspace)
+- **Sidebar Chat History:** Features a **`➕ New Chat`** button, list of clickable past queries, a **`🗑️ Clear History`** button, and active model status.
+- **Document Ingestion:** Compact PDF uploader or one-click **`📄 Load 'Inception net.pdf' (Workspace Sample)`** button.
+- **Grounded Responses:** Answers include document page citations (e.g. `[Page 2]`).
+- **Abstention Callout:** Highlights refused queries with an explicit refusal box and auditor rationale.
+- **Diagnostics Trace:** Expandable breakdown showing Evidence Sufficiency auditor output, confidence composition formula, verifier verdict, and retrieved passage snippets with similarity scores.
 
-1. Start the app by running:  
-   ```bash
-   streamlit run app.py
-   ```
-2. Open the Streamlit link in your browser (default: http://localhost:8501).
+### 2. 📊 Evaluation Dashboard
+- **Benchmark Loader:** Load custom CSVs or click **`📁 Load Built-in Benchmark (10 Qs)`** (covering Answerable, Unanswerable, and Misleading questions).
+- **Metric Cards:** Accuracy, Hallucination/Unsupported Rate, Coverage, and Correct Abstention Rate.
+- **Comparative Table:** Baseline RAG vs. TrustRAG side-by-side comparison with explicit denominators.
+- **Plotly Visualizations:** Grouped metric bar chart, Reliability Diagram (ECE) with diagonal calibration reference, and Risk–Coverage curves.
+- **Audit Export:** Download detailed per-sample evaluation results as a CSV.
 
-3. 📂 Upload a PDF
+---
 
-- Use the file uploader to select any PDF (e.g., notes, research papers, or reports).
+## 📂 8. Repository Structure
 
-4. ⚡ Processing
+```text
+PDF-QA-RAG-System/
+├── app.py                          # Streamlit Research Dashboard
+├── requirements.txt                # Python package dependencies
+├── README.md                       # Research paper-style documentation
+├── Inception net.pdf               # Local benchmark evaluation PDF
+├── data/
+│   └── sample_evaluation.csv       # Curated 10-sample benchmark dataset
+├── tests/
+│   └── test_trustrag.py            # Unit test suite for confidence, JSON parsing & metrics
+└── trustrag/                       # Core Modular TrustRAG Package
+    ├── __init__.py
+    ├── config.py                   # Runtime configurations, constants & prompt templates
+    ├── ollama_client.py            # Robust Ollama HTTP API client
+    ├── pdf_processor.py            # Page-aware PDF extraction (PyPDFLoader) & metadata chunking
+    ├── vector_store.py             # FAISS indexing with nomic-embed-text & similarity scoring
+    ├── evidence_gate.py            # Evidence sufficiency auditor LLM gate (JSON output)
+    ├── confidence.py               # Composite confidence scoring & abstention policy manager
+    ├── generator.py                # RAGPipeline (Baseline RAG vs TrustRAG with bounded retries)
+    ├── verifier.py                 # Post-generation factual claim verifier
+    ├── evaluator.py                # Benchmark evaluator (Accuracy, Unsupported rate, ECE, Risk-Coverage)
+    └── visualization.py            # Plotly charts (Metric comparison, Reliability diagram, Risk-Coverage)
+```
 
-- The system will extract text, split it into chunks, and store them in the vector database.
+---
 
-5. 📝 Ask Your Question
+## ⚠️ 9. Research Integrity & Known Limitations
 
-- Enter your query in the text box (e.g., "What is the main conclusion of this paper?").
+1. **LLM Self-Reported Confidence:** Confidence emitted by language models reflects token-level self-assessments, not calibrated Bayesian posteriors. It serves as an empirical gating signal.
+2. **Retrieval Bottlenecks:** If the embedding model fails to retrieve a passage that exists in the PDF, TrustRAG will correctly identify lack of evidence and abstain. This represents a retrieval limitation rather than an inference error.
+3. **Small-Sample ECE Sensitivity:** Expected Calibration Error (ECE) is sensitive to the number of bins ($M$) and dataset size ($N$). On small datasets ($N < 50$), ECE is an indicative signal rather than an absolute bound.
+4. **Verification Errors:** The verifier is also an LLM and may occasionally misclassify complex reasoning. Critical production deployments require human spot-auditing.
 
-6. 💡 Get the Answer
+---
 
-- The LLM (Ollama + LangChain) retrieves the most relevant context and generates an accurate, context-based answer.
-
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-## 🏗️ Architecture  
-
-The system follows a **RAG (Retrieval-Augmented Generation)** pipeline for answering questions from PDFs.  
-
-<img width="1200" height="596" alt="architecture" src="https://github.com/user-attachments/assets/ecb02057-4c08-416f-9310-0192aa3138c5" />
-
-
-### Workflow:
-1. 📂 **PDF Documents** → Uploaded by the user.  
-2. 🔎 **LangChain Pipeline** → Handles:  
-   - PDF Text Extraction  
-   - Text Chunking  
-   - Vector Store (Chroma/FAISS)  
-3. 🤖 **Ollama LLM** → Uses `llama3.1` for generating answers.  
-4. 💡 **Generated Response** → Delivered back to the user.
-
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## 🖥️ GUI Preview  
-
-The application comes with a simple and interactive **Streamlit-based UI**.  
-
-### 📌 Home Screen  
-Upload your PDF, enter your question, and get instant answers.  
-
-<img width="1348" height="614" alt="home" src="https://github.com/user-attachments/assets/26ffe22c-98db-4fb4-b666-2a97f0096a2b" />
-
-
-### 📌 PDF Upload & Processing  
-After uploading, the system extracts and processes the PDF text for querying.  
-
-<img width="1061" height="389" alt="upload" src="https://github.com/user-attachments/assets/fcffe942-f5b4-4fac-a234-134dd8f17a23" />
-
-### 📌 Q&A Result  
-Ask questions, and the system provides precise answers from the document.  
-
-- Answer Query 1:
-
-<img width="1290" height="630" alt="output1" src="https://github.com/user-attachments/assets/e956e0c1-067f-4ee0-819b-3cdda57648f7" />
-
-- Answer Query 2:
-
-<img width="1354" height="641" alt="query2" src="https://github.com/user-attachments/assets/59d7dd06-1723-4b8a-bb02-2d1cda5e6199" />
-
-
-- Output:
-  
-<img width="1338" height="631" alt="query2_output" src="https://github.com/user-attachments/assets/ca995103-a4ef-469d-9356-9680b984cabf" />
-
-- Wrong Query:
-
-  <img width="1352" height="618" alt="wrong_query" src="https://github.com/user-attachments/assets/e2416423-b106-4681-9a73-9a51cdba3b18" />
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## 🙏 Acknowledgements  
-
-This project is built with the help of:  
-- [LangChain](https://www.langchain.com/) – for chaining components in the RAG pipeline  
-- [Ollama](https://ollama.ai/) – for running **LLaMA 3.1** locally  
-- [Streamlit](https://streamlit.io/) – for the user-friendly interface  
-- [ChromaDB / FAISS](https://www.trychroma.com/) – as vector databases for semantic search  
-- [nomic-embed-text](https://huggingface.co/nomic-ai/nomic-embed-text) – for text embeddings  
-
-Special thanks to the **open-source community** for providing tools that make projects like this possible 🚀  
-
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-## 👤 Author
-
-Muqadas Ejaz
-
-BS Computer Science (AI Specialization)
-
-AI/ML Engineer
-
-Data Science & Gen AI Enthusiast
-
-📫 Connect with me on [LinkedIn](https://www.linkedin.com/in/muqadasejaz/)  
-
-🌐 GitHub: [github.com/muqadasejaz](https://github.com/muqadasejaz)
-
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## 📎 License
-
-This project is open-source and available under the [MIT License](LICENSE).
-
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
